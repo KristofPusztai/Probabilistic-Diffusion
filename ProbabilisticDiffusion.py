@@ -3,7 +3,8 @@ import torch.nn as nn
 from utils import get_beta_schedule
 from torch.nn.modules.loss import _Loss as tLoss
 from torch.optim import Optimizer
-
+from torch.distributions.multivariate_normal import MultivariateNormal
+import matplotlib.pyplot as plt
 
 class Diffusion:
     def __init__(self, data: torch.tensor, num_diffusion_timesteps: int,
@@ -22,7 +23,7 @@ class Diffusion:
         betas = get_beta_schedule(schedule, beta_start=beta_start, beta_end=beta_end,
                                   num_diffusion_timesteps=num_diffusion_timesteps)
         self.alphas = 1-torch.tensor(betas)
-        self.aplha_bar = torch.cumprod(self.alphas, 0)
+        self.alpha_bar = torch.cumprod(self.alphas, 0)
 
     def train(self, batch_size: int, epochs: int):
         for epoch in range(epochs):
@@ -31,7 +32,7 @@ class Diffusion:
             x0_ind = torch.randint(low=0, high=(len(self.data) - 1), size=(batch_size, 1))
             x0 = self.data[x0_ind]
             t = torch.randint(low=0, high=self.num_diffusion_timesteps, size=(batch_size,))
-            alpha_t_bars = self.aplha_bar[t-1].reshape((-1, 1))
+            alpha_t_bars = self.alpha_bar[t-1].reshape((-1, 1))
             z = torch.rand((batch_size, 1))
             inputs = torch.sqrt(alpha_t_bars)*x0 + torch.sqrt(1 - alpha_t_bars) * z
 
@@ -46,3 +47,21 @@ class Diffusion:
             self.cov_optimizer.step()
         # TODO
         pass
+    def forward(self, t, plot=True, s=5):
+        d = self.data.shape[1]
+        if plot:
+            assert d == 2, 'Data is not 2d, cannot plot'
+        alpha_bar = self.alpha_bar[t]
+        cov = (1-alpha_bar) * torch.eye(len(self.data))
+        samples = []
+        for i in range(d):
+            d_data = self.data[:, i]
+            mu_t = d_data*torch.sqrt(alpha_bar)
+            samples.append(MultivariateNormal(mu_t, cov).sample())
+        data_t = torch.stack(samples, dim=1)
+        if plot:
+            plt.scatter(data_t[:, 0], data_t[:, 1], s=s)
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title(f'Samples At Time {t}')
+        return data_t
