@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+import numpy as np
 from utils import get_beta_schedule
 from torch.nn.modules.loss import _Loss as tLoss
 from torch.optim import Optimizer
@@ -11,17 +12,13 @@ import matplotlib.pyplot as plt
 class Diffusion:
     def __init__(self, data: torch.tensor, num_diffusion_timesteps: int,
                  beta_start: int, beta_end: int, schedule: str,
-                 mean_model: nn.Module, mean_loss_fn: tLoss,
-                 cov_model: nn.Module, cov_loss_fn: tLoss,
-                 mean_optimizer: Optimizer, cov_optimizer: Optimizer):
+                 model: nn.Module, loss_fn: tLoss,
+                 optimizer: Optimizer):
         self.data = data
-        self.mean_model = mean_model
-        self.mean_loss_fn = mean_loss_fn
-        self.cov_model = cov_model
-        self.cov_loss_fn = cov_loss_fn
-        self.mean_optimizer = mean_optimizer
-        self.cov_optimizer = cov_optimizer
-        self.num_diffusion_timesteps = num_diffusion_timesteps
+        self.model = model
+        self.loss_fn = loss_fn
+        self.optimizer = optimizer
+        self.T = num_diffusion_timesteps
         betas = get_beta_schedule(schedule, beta_start=beta_start, beta_end=beta_end,
                                   num_diffusion_timesteps=num_diffusion_timesteps)
         self.alphas = 1-torch.tensor(betas)
@@ -32,8 +29,7 @@ class Diffusion:
         n = len(self.data)
         batch_in_epoch = math.ceil(n/epochs)
         for epoch in range(epochs):
-            self.mean_optimizer.zero_grad()
-            self.cov_optimizer.zero_grad()
+            self.optimizer.zero_grad()
             possible_indx = torch.tensor(range(0,n))
             for batch in range(batch_in_epoch):
                 # Batch Sample
@@ -42,45 +38,64 @@ class Diffusion:
                 # Updating Possible Index Choices After Sampling Without Replacement
                 possible_indx = torch.tensor([i for i in possible_indx if i not in x0_ind])
                 x0 = self.data[x0_ind]
-                t = torch.randint(low=0, high=self.num_diffusion_timesteps, size=(sample_size,))
+                t = torch.randint(low=0, high=self.T, size=(sample_size,))
                 alpha_t_bars = self.alpha_bar[t-1].reshape((-1, 1))
                 z = torch.rand((batch_size, 1))
                 # Set Up Inputs
                 inputs = torch.sqrt(alpha_t_bars)*x0 + torch.sqrt(1 - alpha_t_bars) * z
                 inputs = torch.cat([t, inputs], dim=1)
-                mean_outputs = self.mean_model(inputs)
-                cov_outputs = self.cov_model(inputs)
+                model_outputs = self.model(inputs)
                 # Loss Calculations
-                mean_loss = self.mean_loss_fn(mean_outputs)
-                cov_loss = self.cov_loss_fn(cov_outputs)
+                loss = self.loss_fn(model_outputs)
                 # Backwards Step
-                mean_loss.backward()
-                cov_loss.backward()
-                self.mean_optimizer.step()
-                self.cov_optimizer.step()
+                loss.backward()
+                self.optimizer.step()
         if plot_loss:
             # TODO: plot losses
             pass
 
-    def forward(self, t, plot=True, s=5):
+    def forward(self, t, plot=True, **kwargs):
         d = self.data.shape[1]
         if plot:
             assert d == 2, 'Data is not 2d, cannot plot'
         alpha_bar = self.alpha_bar[t]
-        cov = (1-alpha_bar) * torch.eye(len(self.data))
+        cov = (1-alpha_bar)
         samples = []
         for i in range(d):
             d_data = self.data[:, i]
             mu_t = d_data*torch.sqrt(alpha_bar)
-            samples.append(MultivariateNormal(mu_t, cov).sample())
+            samples.append(torch.normal(mu_t, cov))
         data_t = torch.stack(samples, dim=1)
         if plot:
-            plt.scatter(data_t[:, 0], data_t[:, 1], s=s)
+            plt.scatter(data_t[:, 0], data_t[:, 1], **kwargs)
             plt.xlabel('X')
             plt.ylabel('Y')
             plt.title(f'Samples At Time {t}')
         return data_t
 
-    def sample(self, n, plot_intervals=None):
-        # TODO: backwards sampling as defined in pseudocode
-        pass
+    def sample(self, n, plot_intervals=None, sigma_mixture=0, **kwargs):
+        d = self.data.shape[1]
+        sd = np.ones(n)
+        x_t = MultivariateNormal(torch.tensor(np.zeros(d)), torch.eye(d)).rsample(torch.Size([n]))
+        x = x_t
+        for t in range(self.T, 1, -1):
+            if t > 1:
+                z = torch.normal(mean=0, std=torch.tensor(sd))
+            else:
+                z = torch.tensor(np.zeros_like(sd))
+            a_t = self.alphas[t]
+            a_bar_t = self.alpha_bar[t]
+            sigma_t = (1-a_t)*(1-self.alpha_bar[t-1]*sigma_mixture - a_bar_t*(1-sigma_mixture))/(1-a_bar_t)
+            x_t = (1 / torch.sqrt(a_t)) * \
+                  (x_t - (1-a_t)/torch.sqrt(1 - a_bar_t)) * \
+                self.model(x_t, torch.tensor(np.ones_like(x_t)*t)) + sigma_t * z
+            x = torch.cat(x_t, x)
+            if plot_intervals:
+                assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
+                assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
+                if (t % plot_intervals) == 0:
+                    plt.scatter(x_t[:, 0], x_t[:, 1], **kwargs)
+                    plt.xlabel('X')
+                    plt.ylabel('Y')
+                    plt.title(f'Samples At Time {t}')
+        return x
