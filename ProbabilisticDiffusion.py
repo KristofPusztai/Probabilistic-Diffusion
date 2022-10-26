@@ -25,6 +25,7 @@ class Diffusion:
         self.alpha_bar = torch.cumprod(self.alphas, 0)
 
     def train(self, batch_size: int, epochs: int, plot_loss: bool):
+        # TODO: Test
         # TODO: Add in TQDM progress bar and loss outputs
         n = len(self.data)
         batch_in_epoch = math.ceil(n/epochs)
@@ -46,6 +47,7 @@ class Diffusion:
                 inputs = torch.cat([t, inputs], dim=1)
                 model_outputs = self.model(inputs)
                 # Loss Calculations
+                # TODO: loss = (epsilon - model outputs)^2
                 loss = self.loss_fn(model_outputs)
                 # Backwards Step
                 loss.backward()
@@ -55,6 +57,16 @@ class Diffusion:
             pass
 
     def forward(self, t, plot=True, **kwargs):
+        """
+        :param t:
+        :type t:
+        :param plot:
+        :type plot:
+        :param kwargs:
+        :type kwargs:
+        :return:
+        :rtype:
+        """
         d = self.data.shape[1]
         if plot:
             assert d == 2, 'Data is not 2d, cannot plot'
@@ -74,6 +86,7 @@ class Diffusion:
         return data_t
 
     def sample(self, n, plot_intervals=None, sigma_mixture=0, **kwargs):
+        # TODO: Test
         d = self.data.shape[1]
         sd = np.ones(n)
         x_t = MultivariateNormal(torch.tensor(np.zeros(d)), torch.eye(d)).rsample(torch.Size([n]))
