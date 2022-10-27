@@ -24,14 +24,17 @@ class Diffusion:
         self.alphas = 1-torch.tensor(betas)
         self.alpha_bar = torch.cumprod(self.alphas, 0)
 
-    def train(self, batch_size: int, epochs: int, plot_loss: bool):
+    def train(self, batch_size: int, epochs: int, plot_loss: bool = True):
         # TODO: Test
         # TODO: Add in TQDM progress bar and loss outputs
         n = len(self.data)
-        batch_in_epoch = math.ceil(n/epochs)
+        d = self.data.shape[1]
+        batch_in_epoch = math.ceil(n/batch_size)
+        if plot_loss:
+            losses = []
         for epoch in range(epochs):
             self.optimizer.zero_grad()
-            possible_indx = torch.tensor(range(0,n))
+            possible_indx = torch.tensor(range(0,n), dtype=torch.float)
             for batch in range(batch_in_epoch):
                 # Batch Sample
                 sample_size = min(batch_size, len(possible_indx))
@@ -39,21 +42,26 @@ class Diffusion:
                 # Updating Possible Index Choices After Sampling Without Replacement
                 possible_indx = torch.tensor([i for i in possible_indx if i not in x0_ind])
                 x0 = self.data[x0_ind]
-                t = torch.randint(low=0, high=self.T, size=(sample_size,))
+                t = torch.randint(low=0, high=self.T, size=(sample_size,)).reshape(-1, 1)
                 alpha_t_bars = self.alpha_bar[t-1].reshape((-1, 1))
-                z = torch.rand((batch_size, 1))
+                z = torch.rand((batch_size, d))
                 # Set Up Inputs
                 inputs = torch.sqrt(alpha_t_bars)*x0 + torch.sqrt(1 - alpha_t_bars) * z
-                inputs = torch.cat([t, inputs], dim=1)
+                inputs = torch.cat([t.type(dtype=torch.float), inputs.type(dtype=torch.float)], dim=1)
                 model_outputs = self.model(inputs)
                 # Loss Calculations
-                # TODO: loss = (epsilon - model outputs)^2
-                loss = self.loss_fn(model_outputs)
+                loss = self.loss_fn(model_outputs, z)
+                if plot_loss:
+                    losses.append(loss.detach().numpy())
                 # Backwards Step
                 loss.backward()
                 self.optimizer.step()
         if plot_loss:
-            # TODO: plot losses
+            x_ax = range(0, len(losses))
+            plt.plot(x_ax, losses)
+            plt.xlabel('Batch Iteration')
+            plt.ylabel('Batch Loss')
+            plt.show()
             pass
 
     def forward(self, t, plot=True, **kwargs):
@@ -88,27 +96,28 @@ class Diffusion:
     def sample(self, n, plot_intervals=None, sigma_mixture=0, **kwargs):
         # TODO: Test
         d = self.data.shape[1]
-        sd = np.ones(n)
-        x_t = MultivariateNormal(torch.tensor(np.zeros(d)), torch.eye(d)).rsample(torch.Size([n]))
-        x = x_t
-        for t in range(self.T, 1, -1):
+        x_t = MultivariateNormal(torch.tensor(np.zeros(d), dtype=torch.float), torch.eye(d)).rsample(torch.Size([n]))
+        x = x_t.detach()
+        for t in range(self.T-1, -1, -1):
             if t > 1:
-                z = torch.normal(mean=0, std=torch.tensor(sd))
+                z = MultivariateNormal(torch.tensor(np.zeros(d), dtype=torch.float), torch.eye(d)).rsample(torch.Size([n]))
             else:
-                z = torch.tensor(np.zeros_like(sd))
+                z = torch.tensor(np.zeros((n, d)), dtype=torch.float)
             a_t = self.alphas[t]
             a_bar_t = self.alpha_bar[t]
             sigma_t = (1-a_t)*(1-self.alpha_bar[t-1]*sigma_mixture - a_bar_t*(1-sigma_mixture))/(1-a_bar_t)
+            inputs = torch.cat([torch.tensor(np.ones((len(x_t), 1))*t, dtype=torch.float), x_t], dim=1)
             x_t = (1 / torch.sqrt(a_t)) * \
                   (x_t - (1-a_t)/torch.sqrt(1 - a_bar_t)) * \
-                self.model(x_t, torch.tensor(np.ones_like(x_t)*t)) + sigma_t * z
-            x = torch.cat(x_t, x)
+                self.model(inputs) + sigma_t * z
+            x = torch.cat([x_t.detach(), x])
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
                 assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
                 if (t % plot_intervals) == 0:
-                    plt.scatter(x_t[:, 0], x_t[:, 1], **kwargs)
+                    plt.scatter(x_t[:, 0].detach().numpy(), x_t[:, 1].detach().numpy(), **kwargs)
                     plt.xlabel('X')
                     plt.ylabel('Y')
                     plt.title(f'Samples At Time {t}')
+                    plt.show()
         return x
