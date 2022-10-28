@@ -47,8 +47,7 @@ class Diffusion:
                 z = torch.rand((batch_size, d))
                 # Set Up Inputs
                 inputs = torch.sqrt(alpha_t_bars)*x0 + torch.sqrt(1 - alpha_t_bars) * z
-                inputs = torch.cat([t.type(dtype=torch.float), inputs.type(dtype=torch.float)], dim=1)
-                model_outputs = self.model(inputs)
+                model_outputs = self.model(inputs.type(dtype=torch.float), t)
                 # Loss Calculations
                 loss = self.loss_fn(model_outputs, z)
                 if plot_loss:
@@ -106,10 +105,9 @@ class Diffusion:
             a_t = self.alphas[t]
             a_bar_t = self.alpha_bar[t]
             sigma_t = (1-a_t)*(1-self.alpha_bar[t-1]*sigma_mixture - a_bar_t*(1-sigma_mixture))/(1-a_bar_t)
-            inputs = torch.cat([torch.tensor(np.ones((len(x_t), 1))*t, dtype=torch.float), x_t], dim=1)
             x_t = (1 / torch.sqrt(a_t)) * \
                   (x_t - (1-a_t)/torch.sqrt(1 - a_bar_t)) * \
-                self.model(inputs) + sigma_t * z
+                self.model(x_t, torch.tensor(np.ones((len(x_t), 1))*t, dtype=torch.float)) + sigma_t * z
             x = torch.cat([x_t.detach(), x])
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
