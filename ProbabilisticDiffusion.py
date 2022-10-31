@@ -5,7 +5,6 @@ import numpy as np
 from utils import get_beta_schedule
 from torch.nn.modules.loss import _Loss as tLoss
 from torch.optim import Optimizer
-from torch.distributions.multivariate_normal import MultivariateNormal
 import matplotlib.pyplot as plt
 
 
@@ -21,7 +20,7 @@ class Diffusion:
         self.T = num_diffusion_timesteps
         betas = get_beta_schedule(schedule, beta_start=beta_start, beta_end=beta_end,
                                   num_diffusion_timesteps=num_diffusion_timesteps)
-        self.alphas = 1-torch.tensor(betas)
+        self.alphas = 1-torch.tensor(betas, dtype=torch.float)
         self.alpha_bar = torch.cumprod(self.alphas, 0)
 
     def train(self, batch_size: int, epochs: int, plot_loss: bool = True):
@@ -42,12 +41,12 @@ class Diffusion:
                 # Updating Possible Index Choices After Sampling Without Replacement
                 possible_indx = torch.tensor([i for i in possible_indx if i not in x0_ind])
                 x0 = self.data[x0_ind]
-                t = torch.randint(0, self.T, size=(batch_size // 2 + 1,))
-                t = torch.cat([t, self.T - t - 1], dim=0)[:sample_size].long()
-                alpha_t_bars = self.alpha_bar[t-1].reshape((-1, 1))
-                z = torch.rand((batch_size, d))
+                t = torch.randint(0, self.T, size=(sample_size // 2 + 1,))
+                t = torch.cat([t, self.T - t - 1], dim=0)[:batch_size].long()
+                alpha_t_bars = self.alpha_bar[t].reshape((-1, 1))
+                z = torch.randn_like(x0)
                 # Set Up Inputs
-                inputs = torch.sqrt(alpha_t_bars)*x0 + torch.sqrt(1 - alpha_t_bars) * z
+                inputs = torch.sqrt(alpha_t_bars) * x0 + torch.sqrt(1 - alpha_t_bars) * z
                 model_outputs = self.model(inputs.type(dtype=torch.float), t)
                 # Loss Calculations
                 loss = self.loss_fn(model_outputs, z)
@@ -90,26 +89,21 @@ class Diffusion:
             plt.scatter(data_t[:, 0], data_t[:, 1], **kwargs)
             plt.xlabel('X')
             plt.ylabel('Y')
-            plt.title(f'Samples At Time {t}')
+            plt.title(f'Samples At Time {t+1}')
         return data_t
 
-    def sample(self, n, plot_intervals=None, sigma_mixture=0, **kwargs):
-        # TODO: Test
-        d = self.data.shape[1]
-        x_t = MultivariateNormal(torch.tensor(np.zeros(d), dtype=torch.float), torch.eye(d)).rsample(torch.Size([n]))
-        x = x_t.detach()
+    def sample(self, n, plot_intervals=None, **kwargs):
+        x_t = torch.randn((n, self.data.shape[1]))
+        x = [x_t.detach().numpy()]
         for t in range(self.T-1, -1, -1):
-            if t > 1:
-                z = MultivariateNormal(torch.tensor(np.zeros(d), dtype=torch.float), torch.eye(d)).rsample(torch.Size([n]))
-            else:
-                z = torch.tensor(np.zeros((n, d)), dtype=torch.float)
-            a_t = self.alphas[t]
-            a_bar_t = self.alpha_bar[t]
+            z = torch.randn_like(x_t)
+            a_t = self.alphas[t].reshape((-1, 1))
+            a_bar_t = self.alpha_bar[t].reshape((-1, 1))
             sigma_t = torch.sqrt(1-a_t)
-            x_t = (1 / torch.sqrt(a_t)) * \
-                  (x_t - (1-a_t)/torch.sqrt(1 - a_bar_t)) * \
-                self.model(x_t, torch.tensor(np.ones((len(x_t), 1))*t, dtype=torch.int)) + sigma_t * z
-            x = torch.cat([x_t.detach(), x])
+            mean = (1 / torch.sqrt(a_t)) *\
+                   (x_t - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(x_t, torch.tensor([t]))))
+            x_t = mean + sigma_t * z
+            x.append(x_t.detach().numpy())
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
                 assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
