@@ -42,7 +42,8 @@ class Diffusion:
                 # Updating Possible Index Choices After Sampling Without Replacement
                 possible_indx = torch.tensor([i for i in possible_indx if i not in x0_ind])
                 x0 = self.data[x0_ind]
-                t = torch.randint(low=0, high=self.T, size=(sample_size,)).reshape(-1, 1)
+                t = torch.randint(0, self.T, size=(batch_size // 2 + 1,))
+                t = torch.cat([t, self.T - t - 1], dim=0)[:sample_size].long()
                 alpha_t_bars = self.alpha_bar[t-1].reshape((-1, 1))
                 z = torch.rand((batch_size, d))
                 # Set Up Inputs
@@ -104,10 +105,10 @@ class Diffusion:
                 z = torch.tensor(np.zeros((n, d)), dtype=torch.float)
             a_t = self.alphas[t]
             a_bar_t = self.alpha_bar[t]
-            sigma_t = (1-a_t)*(1-self.alpha_bar[t-1]*sigma_mixture - a_bar_t*(1-sigma_mixture))/(1-a_bar_t)
+            sigma_t = torch.sqrt(1-a_t)
             x_t = (1 / torch.sqrt(a_t)) * \
                   (x_t - (1-a_t)/torch.sqrt(1 - a_bar_t)) * \
-                self.model(x_t, torch.tensor(np.ones((len(x_t), 1))*t, dtype=torch.float)) + sigma_t * z
+                self.model(x_t, torch.tensor(np.ones((len(x_t), 1))*t, dtype=torch.int)) + sigma_t * z
             x = torch.cat([x_t.detach(), x])
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
