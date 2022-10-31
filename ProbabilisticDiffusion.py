@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import math
-import numpy as np
 from utils import get_beta_schedule
 from torch.nn.modules.loss import _Loss as tLoss
 from torch.optim import Optimizer
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 
 class Diffusion:
@@ -24,46 +24,54 @@ class Diffusion:
         self.alpha_bar = torch.cumprod(self.alphas, 0)
 
     def train(self, batch_size: int, epochs: int, plot_loss: bool = True):
-        # TODO: Test
-        # TODO: Add in TQDM progress bar and loss outputs
+        """
+        :param batch_size:
+        :type batch_size:
+        :param epochs:
+        :type epochs:
+        :param plot_loss:
+        :type plot_loss:
+        :return:
+        :rtype:
+        """
         n = len(self.data)
-        d = self.data.shape[1]
         batch_in_epoch = math.ceil(n/batch_size)
         if plot_loss:
             losses = []
-        for epoch in range(epochs):
-            self.optimizer.zero_grad()
-            possible_indx = torch.tensor(range(0,n), dtype=torch.float)
-            for batch in range(batch_in_epoch):
-                # Batch Sample
-                sample_size = min(batch_size, len(possible_indx))
-                x0_ind = torch.multinomial(possible_indx, sample_size)
-                # Updating Possible Index Choices After Sampling Without Replacement
-                possible_indx = torch.tensor([i for i in possible_indx if i not in x0_ind])
-                x0 = self.data[x0_ind]
-                t = torch.randint(0, self.T, size=(sample_size // 2 + 1,))
-                t = torch.cat([t, self.T - t - 1], dim=0)[:batch_size].long()
-                alpha_t_bars = self.alpha_bar[t].reshape((-1, 1))
-                z = torch.randn_like(x0)
-                # Set Up Inputs
-                inputs = torch.sqrt(alpha_t_bars) * x0 + torch.sqrt(1 - alpha_t_bars) * z
-                model_outputs = self.model(inputs.type(dtype=torch.float), t)
-                # Loss Calculations
-                loss = self.loss_fn(model_outputs, z)
-                if plot_loss:
-                    losses.append(loss.detach().numpy())
-                # Backwards Step
-                loss.backward()
-                self.optimizer.step()
+        with tqdm(range(epochs)) as tepoch:
+            for epoch in tepoch:
+                possible_indx = torch.tensor(range(0, n), dtype=torch.float)
+                for batch in range(batch_in_epoch):
+                    self.optimizer.zero_grad()
+                    # Batch Sample
+                    sample_size = min(batch_size, len(possible_indx))
+                    x0_ind = torch.multinomial(possible_indx, sample_size)
+                    # Updating Possible Index Choices After Sampling Without Replacement
+                    possible_indx = torch.tensor([i for i in possible_indx if i not in x0_ind])
+                    x0 = self.data[x0_ind]
+                    t = torch.randint(0, self.T, size=(sample_size // 2 + 1,))
+                    t = torch.cat([t, self.T - t - 1], dim=0)[:batch_size].long()
+                    alpha_t_bars = self.alpha_bar[t].reshape((-1, 1))
+                    z = torch.randn_like(x0)
+                    # Set Up Inputs
+                    inputs = torch.sqrt(alpha_t_bars) * x0 + torch.sqrt(1 - alpha_t_bars) * z
+                    model_outputs = self.model(inputs.type(dtype=torch.float), t)
+                    # Loss Calculations
+                    loss = self.loss_fn(model_outputs, z)
+                    if plot_loss:
+                        losses.append(loss.detach().numpy())
+                    # Backwards Step
+                    loss.backward()
+                    tepoch.set_postfix(loss=loss.item())
+                    self.optimizer.step()
         if plot_loss:
             x_ax = range(0, len(losses))
             plt.plot(x_ax, losses)
             plt.xlabel('Batch Iteration')
             plt.ylabel('Batch Loss')
             plt.show()
-            pass
 
-    def forward(self, t, plot=True, **kwargs):
+    def forward(self, t: int, plot: bool = True, **kwargs):
         """
         :param t:
         :type t:
@@ -89,10 +97,20 @@ class Diffusion:
             plt.scatter(data_t[:, 0], data_t[:, 1], **kwargs)
             plt.xlabel('X')
             plt.ylabel('Y')
-            plt.title(f'Samples At Time {t+1}')
+            plt.title(f'Samples At Time {t}')
         return data_t
 
-    def sample(self, n, plot_intervals=None, **kwargs):
+    def sample(self, n: int, plot_intervals=None, **kwargs):
+        """
+        :param n:
+        :type n:
+        :param plot_intervals:
+        :type plot_intervals:
+        :param kwargs:
+        :type kwargs:
+        :return:
+        :rtype:
+        """
         x_t = torch.randn((n, self.data.shape[1]))
         x = [x_t.detach().numpy()]
         for t in range(self.T-1, -1, -1):
