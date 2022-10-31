@@ -1,4 +1,5 @@
 import numpy as np
+import re
 
 
 def _warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac):
@@ -25,3 +26,12 @@ def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_time
         raise NotImplementedError(beta_schedule)
     assert betas.shape == (num_diffusion_timesteps,)
     return betas
+
+
+def preserve_zeros(num, desired_length):
+    str_num = str(round(num, desired_length))
+    post_decimal = re.findall(r'\..*', str_num)[0].replace('.', '')
+    while len(post_decimal) < desired_length:
+        str_num += '0'
+        post_decimal = re.findall(r'\..*', str_num)[0].replace('.', '')
+    return str_num

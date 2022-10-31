@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from utils import get_beta_schedule
+from utils import get_beta_schedule, preserve_zeros
 from torch.nn.modules.loss import _Loss as tLoss
 from torch.optim import Optimizer
 import matplotlib.pyplot as plt
@@ -58,11 +58,12 @@ class Diffusion:
                     model_outputs = self.model(inputs.type(dtype=torch.float), t)
                     # Loss Calculations
                     loss = self.loss_fn(model_outputs, z)
+                    tqdm_loss = preserve_zeros(loss.item(), 3)
+                    tepoch.set_postfix(loss=tqdm_loss)
                     if plot_loss:
                         losses.append(loss.detach().numpy())
                     # Backwards Step
                     loss.backward()
-                    tepoch.set_postfix(loss=loss.item())
                     self.optimizer.step()
         if plot_loss:
             x_ax = range(0, len(losses))
