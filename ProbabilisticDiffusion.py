@@ -13,6 +13,7 @@ class Diffusion:
                  beta_start: int, beta_end: int, schedule: str,
                  model: nn.Module, loss_fn: tLoss,
                  optimizer: Optimizer):
+        self.data_type = data.dtype
         self.data = data
         self.model = model
         self.loss_fn = loss_fn
@@ -20,7 +21,7 @@ class Diffusion:
         self.T = num_diffusion_timesteps
         betas = get_beta_schedule(schedule, beta_start=beta_start, beta_end=beta_end,
                                   num_diffusion_timesteps=num_diffusion_timesteps)
-        self.alphas = 1-torch.tensor(betas, dtype=torch.float)
+        self.alphas = 1-torch.tensor(betas, dtype=self.data_type)
         self.alpha_bar = torch.cumprod(self.alphas, 0)
 
     def train(self, batch_size: int, epochs: int, plot_loss: bool = True):
@@ -55,7 +56,7 @@ class Diffusion:
                     z = torch.randn_like(x0)
                     # Set Up Inputs
                     inputs = torch.sqrt(alpha_t_bars) * x0 + torch.sqrt(1 - alpha_t_bars) * z
-                    model_outputs = self.model(inputs.type(dtype=torch.float), t)
+                    model_outputs = self.model(inputs, t)
                     # Loss Calculations
                     loss = self.loss_fn(model_outputs, z)
                     tqdm_loss = preserve_zeros(loss.item(), 3)
