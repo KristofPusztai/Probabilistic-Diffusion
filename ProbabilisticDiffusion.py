@@ -20,7 +20,7 @@ class Diffusion:
         self.T = num_diffusion_timesteps
         betas = get_beta_schedule(schedule, beta_start=beta_start, beta_end=beta_end,
                                   num_diffusion_timesteps=num_diffusion_timesteps)
-        self.alphas = 1-torch.tensor(betas, dtype=self.data.data_type)
+        self.alphas = 1-torch.tensor(betas, dtype=self.data.dtype)
         self.alpha_bar = torch.cumprod(self.alphas, 0)
 
     def train(self, batch_size: int, epochs: int, plot_loss: bool = True):
