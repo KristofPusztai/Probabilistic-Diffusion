@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 import math
-from utils import get_beta_schedule, preserve_zeros
+from utils import get_beta_schedule, preserve_zeros, normal_grad
 from torch.nn.modules.loss import _Loss as tLoss
+from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.optim import Optimizer
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -101,35 +102,64 @@ class Diffusion:
             plt.title(f'Samples At Time {t}')
         return data_t
 
-    def sample(self, n: int, plot_intervals=None, **kwargs):
+    def sample(self, n: int, plot_intervals=None, no_noise=False, **kwargs):
         """
         :param n:
         :type n:
         :param plot_intervals:
         :type plot_intervals:
+        :param no_noise:
+        :type no_noise:
         :param kwargs:
         :type kwargs:
         :return:
         :rtype:
         """
         x_t = torch.randn((n, self.data.shape[1]))
-        x = [x_t.detach().numpy()]
+        x = [x_t.detach()]
+        if no_noise:
+            title = 'No Noise Samples At Time '
+        else:
+            title = 'Samples At Time '
         for t in range(self.T-1, -1, -1):
             z = torch.randn_like(x_t)
             a_t = self.alphas[t].reshape((-1, 1))
             a_bar_t = self.alpha_bar[t].reshape((-1, 1))
-            sigma_t = torch.sqrt(1-a_t)
+            if no_noise:
+                sigma_t = 0
+            else:
+                sigma_t = torch.sqrt(1-a_t)
             mean = (1 / torch.sqrt(a_t)) *\
                    (x_t - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(x_t, torch.tensor([t]))))
             x_t = mean + sigma_t * z
-            x.append(x_t.detach().numpy())
+            detached_xt = x_t.detach()
+            x.append(detached_xt)
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
                 assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
                 if (t % plot_intervals) == 0:
-                    plt.scatter(x_t[:, 0].detach().numpy(), x_t[:, 1].detach().numpy(), **kwargs)
+                    plt.scatter(detached_xt[:, 0], detached_xt[:, 1], **kwargs)
                     plt.xlabel('X')
                     plt.ylabel('Y')
-                    plt.title(f'Samples At Time {t}')
+                    plt.title(title + str(t))
                     plt.show()
         return x
+
+    @torch.no_grad()
+    def estimate_distribution(self, n, grid):
+        d = grid.shape[1]
+        prior_points = self.sample(n, no_noise=True)[self.T - 1]
+        a_t = self.alphas[1]
+        a_bar_t = self.alpha_bar[1]
+        means = (1 / torch.sqrt(a_t)) * \
+                (prior_points - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(prior_points, torch.tensor([1]))))
+        probs = None
+        for mean in means:
+            cov = torch.eye(d) * (1 - self.alpha_bar[199])
+            p = torch.exp(MultivariateNormal(mean, cov).log_prob(grid))
+            if probs is not None:
+                probs += p
+            else:
+                probs = p
+        probs = probs/n
+        return probs
