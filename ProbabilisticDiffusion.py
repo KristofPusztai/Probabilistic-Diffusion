@@ -105,7 +105,7 @@ class Diffusion:
 
     @torch.no_grad()
     def sample(self, n: int, plot_intervals: Union[None, int]=None, no_noise: bool=False,
-               keep: Union[None, str]=None, **kwargs):
+               keep: Union[None, str, int]=None, **kwargs):
         """
         :param n:
         :type n:
@@ -141,6 +141,9 @@ class Diffusion:
             x_t = mean + sigma_t * z
             if keep == 'all':
                 x.append(x_t)
+            elif type(keep) == int:
+                if t == keep:
+                    x = x_t
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
                 assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
@@ -157,7 +160,7 @@ class Diffusion:
     @torch.no_grad()
     def estimate_distribution(self, n, grid):
         d = grid.shape[1]
-        prior_points = self.sample(n, no_noise=True)[self.T - 1]
+        prior_points = self.sample(n, no_noise=True, keep=(self.T-1))
         a_t = self.alphas[1]
         a_bar_t = self.alpha_bar[1]
         means = (1 / torch.sqrt(a_t)) * \
