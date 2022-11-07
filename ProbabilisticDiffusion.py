@@ -102,7 +102,7 @@ class Diffusion:
             plt.title(f'Samples At Time {t}')
         return data_t
 
-    def sample(self, n: int, plot_intervals=None, no_noise=False, **kwargs):
+    def sample(self, n: int, plot_intervals=None, no_noise=False, inplace=True, **kwargs):
         """
         :param n:
         :type n:
@@ -116,7 +116,8 @@ class Diffusion:
         :rtype:
         """
         x_t = torch.randn((n, self.data.shape[1]))
-        x = [x_t.detach()]
+        if !inplace:
+            x = [x_t.detach()]
         if no_noise:
             title = 'No Noise Samples At Time '
         else:
@@ -132,18 +133,22 @@ class Diffusion:
             mean = (1 / torch.sqrt(a_t)) *\
                    (x_t - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(x_t, torch.tensor([t]))))
             x_t = mean + sigma_t * z
-            detached_xt = x_t.detach()
-            x.append(detached_xt)
+            if !inplace:
+                detached_xt = x_t.detach()
+                x.append(detached_xt)
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
                 assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
                 if (t % plot_intervals) == 0:
+                    if inplace:
+                        detached_xt = x_t.detach()
                     plt.scatter(detached_xt[:, 0], detached_xt[:, 1], **kwargs)
                     plt.xlabel('X')
                     plt.ylabel('Y')
                     plt.title(title + str(t))
                     plt.show()
-        return x
+        if !inplace:
+            return x
 
     @torch.no_grad()
     def estimate_distribution(self, n, grid):
