@@ -103,6 +103,7 @@ class Diffusion:
             plt.title(f'Samples At Time {t}')
         return data_t
 
+    @torch.no_grad()
     def sample(self, n: int, plot_intervals: Union[None, int]=None, no_noise: bool=False,
                keep: Union[None, str]=None, **kwargs):
         """
@@ -122,7 +123,7 @@ class Diffusion:
         x_t = torch.randn((n, self.data.shape[1]))
         x = None
         if keep == 'all':
-            x = [x_t.detach()]
+            x = [x_t]
         if no_noise:
             title = 'No Noise Samples At Time '
         else:
@@ -139,24 +140,18 @@ class Diffusion:
                    (x_t - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(x_t, torch.tensor([t]))))
             x_t = mean + sigma_t * z
             if keep == 'all':
-                detached_xt = x_t.detach()
-                x.append(detached_xt)
+                x.append(x_t)
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
                 assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
                 if (t % plot_intervals) == 0:
-                    if keep != 'all':
-                        detached_xt = x_t.detach()
-                    plt.scatter(detached_xt[:, 0], detached_xt[:, 1], **kwargs)
+                    plt.scatter(x_t[:, 0], x_t[:, 1], **kwargs)
                     plt.xlabel('X')
                     plt.ylabel('Y')
                     plt.title(title + str(t))
                     plt.show()
         if keep == 'last':
-            if plot_intervals:
-                x = detached_xt
-            else:
-                x = x_t.detach()
+            x = x_t
         return x
 
     @torch.no_grad()
