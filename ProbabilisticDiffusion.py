@@ -155,7 +155,7 @@ class Diffusion:
                 (prior_points - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(prior_points, torch.tensor([1]))))
         probs = None
         for mean in means:
-            cov = torch.eye(d) * (1 - self.alpha_bar[199])
+            cov = torch.eye(d) * (1 - self.alpha_bar[self.T-1])
             p = torch.exp(MultivariateNormal(mean, cov).log_prob(grid))
             if probs is not None:
                 probs += p
