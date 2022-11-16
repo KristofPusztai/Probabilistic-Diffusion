@@ -7,7 +7,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.optim import Optimizer
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from typing import Union
+from typing import Union, List
 
 
 class Diffusion:
@@ -25,17 +25,7 @@ class Diffusion:
         self.alphas = 1-torch.tensor(betas, dtype=self.data.dtype)
         self.alpha_bar = torch.cumprod(self.alphas, 0)
 
-    def train(self, batch_size: int, epochs: int, plot_loss: bool = True):
-        """
-        :param batch_size:
-        :type batch_size:
-        :param epochs:
-        :type epochs:
-        :param plot_loss:
-        :type plot_loss:
-        :return:
-        :rtype:
-        """
+    def train(self, batch_size: int, epochs: int, plot_loss: bool = True, sig_fig: int = 3):
         n = len(self.data)
         batch_in_epoch = math.ceil(n/batch_size)
         if plot_loss:
@@ -60,7 +50,7 @@ class Diffusion:
                     model_outputs = self.model(inputs, t)
                     # Loss Calculations
                     loss = self.loss_fn(model_outputs, z)
-                    tqdm_loss = preserve_zeros(loss.item(), 3)
+                    tqdm_loss = preserve_zeros(loss.item(), sig_fig)
                     tepoch.set_postfix(loss=tqdm_loss)
                     if plot_loss:
                         losses.append(loss.detach().numpy())
@@ -73,21 +63,12 @@ class Diffusion:
             plt.xlabel('Batch Iteration')
             plt.ylabel('Batch Loss')
             plt.show()
-
-    def forward(self, t: int, plot: bool = True, **kwargs):
-        """
-        :param t:
-        :type t:
-        :param plot:
-        :type plot:
-        :param kwargs:
-        :type kwargs:
-        :return:
-        :rtype:
-        """
+            
+    @torch.no_grad()
+    def forward(self, t: int, plot: bool = True, plot_idx: List[int] = [0, 1], **kwargs):
         d = self.data.shape[1]
         if plot:
-            assert d == 2, 'Data is not 2d, cannot plot'
+            assert len(plot_idx) == 2, 'Specified Plot Axes are not 2d, cannot plot'
         alpha_bar = self.alpha_bar[t]
         cov = (1-alpha_bar)
         samples = []
@@ -97,29 +78,15 @@ class Diffusion:
             samples.append(torch.normal(mu_t, cov))
         data_t = torch.stack(samples, dim=1)
         if plot:
-            plt.scatter(data_t[:, 0], data_t[:, 1], **kwargs)
+            plt.scatter(data_t[:, plot_idx[0]], data_t[:, plot_idx[1]], **kwargs)
             plt.xlabel('X')
             plt.ylabel('Y')
             plt.title(f'Samples At Time {t}')
         return data_t
 
     @torch.no_grad()
-    def sample(self, n: int, plot_intervals: Union[None, int]=None, no_noise: bool=False,
-               keep: Union[None, str, int]=None, **kwargs):
-        """
-        :param n:
-        :type n:
-        :param plot_intervals:
-        :type plot_intervals:
-        :param no_noise:
-        :type no_noise:
-        :param keep: Accepts None, 'all', 'last', specifies what sampled values to keep
-        :type keep: Union[None, str]
-        :param kwargs:
-        :type kwargs:
-        :return:
-        :rtype:
-        """
+    def sample(self, n: int, plot_intervals: Union[None, int]=None, plot_idx: List[int] = [0, 1],
+               no_noise: bool=False, keep: Union[None, str, int]=None, **kwargs):
         x_t = torch.randn((n, self.data.shape[1]))
         x = None
         if keep == 'all':
@@ -146,9 +113,9 @@ class Diffusion:
                     x = x_t
             if plot_intervals:
                 assert plot_intervals > 0, 'Plot Intervals Must Be Greater Than 0'
-                assert x_t.shape[1] == 2, 'Data is not 2d, cannot plot'
+                assert len(plot_idx) == 2,'Specified index data is not 2d, cannot plot'
                 if (t % plot_intervals) == 0:
-                    plt.scatter(x_t[:, 0], x_t[:, 1], **kwargs)
+                    plt.scatter(x_t[:, plot_idx[0]], x_t[:, plot_idx[1]], **kwargs)
                     plt.xlabel('X')
                     plt.ylabel('Y')
                     plt.title(title + str(t))
@@ -158,16 +125,16 @@ class Diffusion:
         return x
 
     @torch.no_grad()
-    def estimate_distribution(self, n, grid):
+    def estimate_distribution(self, n, grid, var):
         d = grid.shape[1]
-        prior_points = self.sample(n, no_noise=True, keep=(self.T-1))
-        a_t = self.alphas[1]
-        a_bar_t = self.alpha_bar[1]
+        prior_points = self.sample(n, no_noise=True, keep=1)
+        a_t = self.alphas[0]
+        a_bar_t = self.alpha_bar[0]
         means = (1 / torch.sqrt(a_t)) * \
                 (prior_points - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(prior_points, torch.tensor([1]))))
         probs = None
+        cov = torch.eye(d) * var
         for mean in means:
-            cov = torch.eye(d) * (1 - self.alpha_bar[self.T-1])
             p = torch.exp(MultivariateNormal(mean, cov).log_prob(grid))
             if probs is not None:
                 probs += p
