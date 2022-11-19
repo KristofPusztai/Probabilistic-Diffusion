@@ -37,19 +37,19 @@ def preserve_zeros(num, desired_length):
     return str_num
 
 
-def normal_grad(x, sd):
+def normal_grad(grid, means, sd):
     # TODO: change to torch data types
     # Normal grad, 2 dimensions
-    x1 = x[:, 0]
-    x2 = x[:, 1]
+    x1 = grid[:, 0]
+    x2 = grid[:, 1]
 
-    fx1 = 1 / (sd[0] * np.sqrt(2 * np.pi)) * np.exp(-x1 ** 2 / (2 * sd[0] ** 2))
-    fx2 = 1 / (sd[1] * np.sqrt(2 * np.pi)) * np.exp(-x2 ** 2 / (2 * sd[1] ** 2))
+    fx1 = 1 / (sd[0] * torch.sqrt(2 * torch.pi)) * torch.exp(-x1 ** 2 / (2 * sd[0] ** 2))
+    fx2 = 1 / (sd[1] * torch.sqrt(2 * torch.pi)) * torch.exp(-x2 ** 2 / (2 * sd[1] ** 2))
 
     grad = np.zeros((len(x), 2))
 
-    grad1 = fx2 * 1 / (sd[0] * np.sqrt(2 * np.pi)) * np.exp(-x1 ** 2 / (2 * sd[0] ** 2)) * (-x1 / (sd[0] ** 2))
-    grad2 = fx1 * 1 / (sd[1] * np.sqrt(2 * np.pi)) * np.exp(-x2 ** 2 / (2 * sd[1] ** 2)) * (-x2 / (sd[1] ** 2))
+    grad1 = fx2 * 1 / (sd[0] * torch.sqrt(2 * torch.pi)) * torch.exp(-x1 ** 2 / (2 * sd[0] ** 2)) * (-x1 / (sd[0] ** 2))
+    grad2 = fx1 * 1 / (sd[1] * torch.sqrt(2 * torch.pi)) * torch.exp(-x2 ** 2 / (2 * sd[1] ** 2)) * (-x2 / (sd[1] ** 2))
 
     grad[:, 0] = grad1
     grad[:, 1] = grad2
