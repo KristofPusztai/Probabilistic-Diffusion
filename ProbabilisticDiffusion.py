@@ -42,7 +42,7 @@ class Diffusion:
                     possible_indx = torch.tensor([i for i in possible_indx if i not in x0_ind])
                     x0 = self.data[x0_ind]
                     t = torch.randint(0, self.T, size=(sample_size // 2 + 1,))
-                    t = torch.cat([t, self.T - t - 1], dim=0)[:batch_size].long()
+                    t = torch.cat([t, self.T - t - 1], dim=0)[:sample_size].long()
                     alpha_t_bars = self.alpha_bar[t].reshape((-1, 1))
                     z = torch.randn_like(x0)
                     # Set Up Inputs
@@ -87,6 +87,8 @@ class Diffusion:
     @torch.no_grad()
     def sample(self, n: int, plot_intervals: Union[None, int]=None, plot_idx: List[int] = [0, 1],
                no_noise: bool=False, keep: Union[None, str, int]=None, **kwargs):
+        if plot_intervals:
+            assert len(plot_idx) == 2, '2D plotting only'
         x_t = torch.randn((n, self.data.shape[1]))
         x = None
         if keep == 'all':
@@ -125,15 +127,17 @@ class Diffusion:
         return x
 
     @torch.no_grad()
-    def estimate_distribution(self, n, grid, var):
+    def estimate_distribution(self, n, grid, sd, plot_idx = [0,1]):
         d = grid.shape[1]
-        prior_points = self.sample(n, no_noise=True, keep=1)
+        assert len(plot_idx) == 2, '2D plotting only'
+        assert d == 2, '2D plotting only'
+        prior_points = s+elf.sample(n, no_noise=True, keep=1)
         a_t = self.alphas[0]
         a_bar_t = self.alpha_bar[0]
         means = (1 / torch.sqrt(a_t)) * \
-                (prior_points - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(prior_points, torch.tensor([1]))))
+                (prior_points - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(prior_points, torch.tensor([1]))[:, plot_idx]))
         probs = None
-        cov = torch.eye(d) * var
+        cov = torch.eye(d) * sd
         for mean in means:
             p = torch.exp(MultivariateNormal(mean, cov).log_prob(grid))
             if probs is not None:
@@ -142,3 +146,9 @@ class Diffusion:
                 probs = p
         probs = probs/n
         return probs
+    
+    @torch.no_grad()
+    def estimate_gradient(self, n, grid, sd, plot_idx = [0,1]):
+        # TODO: sum of normal's over n sampled 'means', sd is error for that point
+        
+        pass
