@@ -3,7 +3,6 @@ import torch.nn as nn
 import math
 from utils import get_beta_schedule, preserve_zeros, normal_grad
 from torch.nn.modules.loss import _Loss as tLoss
-from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.optim import Optimizer
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -125,30 +124,3 @@ class Diffusion:
         if keep == 'last':
             x = x_t
         return x
-
-    @torch.no_grad()
-    def estimate_distribution(self, n, grid, sd, plot_idx = [0,1]):
-        d = grid.shape[1]
-        assert len(plot_idx) == 2, '2D plotting only'
-        assert d == 2, '2D plotting only'
-        prior_points = s+elf.sample(n, no_noise=True, keep=1)
-        a_t = self.alphas[0]
-        a_bar_t = self.alpha_bar[0]
-        means = (1 / torch.sqrt(a_t)) * \
-                (prior_points - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(prior_points, torch.tensor([1]))[:, plot_idx]))
-        probs = None
-        cov = torch.eye(d) * sd
-        for mean in means:
-            p = torch.exp(MultivariateNormal(mean, cov).log_prob(grid))
-            if probs is not None:
-                probs += p
-            else:
-                probs = p
-        probs = probs/n
-        return probs
-    
-    @torch.no_grad()
-    def estimate_gradient(self, n, grid, sd, plot_idx = [0,1]):
-        # TODO: sum of normal's over n sampled 'means', sd is error for that point
-        
-        pass
