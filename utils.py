@@ -1,6 +1,7 @@
 import numpy as np
 import re
 import torch
+from torch.distributions.normal import Normal
 
 
 def _warmup_beta(beta_start, beta_end, num_diffusion_timesteps, warmup_frac):
@@ -56,34 +57,9 @@ def normal_grad(grid, sd):
     grad[:, 1] = grad2
     return grad
 
-def tweedies(data, probabilities, gradients, sd, clearance = 0.000000001):
+def tweedies(data, probabilities, gradients, var, clearance = 0.000000001):
     # Tweedies formula
-    tweedies1 = sd[:, 0] * (gradients[:, 0] / (probabilities + 0.000001))
-    tweedies2 = sd[:, 1] * (gradients[:, 1] / (probabilities + 0.000001))
+    tweedies1 = var[:, 0] * (gradients[:, 0] / (probabilities + clearance))
+    tweedies2 = var[:, 1] * (gradients[:, 1] / (probabilities + clearance))
     tweedies = data + torch.stack((tweedies1, tweedies2), dim=1)
     return tweedies
-
-@torch.no_grad()
-def estimate_distribution(diffusion, n, grid, sd, plot_idx = [0,1]):
-    d = grid.shape[1]
-    assert len(plot_idx) == 2, '2D plotting only'
-    assert d == 2, '2D plotting only'
-    means = diffusion.sample(n, no_noise=True, keep = 'last')
-    probs = torch.zeros((len(grid),))
-    for i in range(len(grid)):
-        p1 = torch.exp(Normal(torch.tensor(0), sd[i, 0]).log_prob(grid[i, 0] - means[:, 0]))
-        p2 = torch.exp(Normal(torch.tensor(0), sd[i,0]).log_prob(grid[i, 1] - means[:, 1]))
-        probs[i] = torch.mean(p1 * p2, dim=0)
-    return probs
-
-@torch.no_grad()
-def estimate_gradient(diffusion, n, grid, sd, plot_idx = [0,1]):
-    d = grid.shape[1]
-    assert len(plot_idx) == 2, '2D plotting only'
-    assert d == 2, '2D gradients supported only'
-    means = diffusion.sample(n, no_noise=True, keep = 'last')
-    gradients = torch.zeros_like(grid)
-    for i in range(len(grid)):
-        gradients[i] = torch.mean(normal_grad(grid[i] - means, sd = sd[i]), dim=0)
-    return gradients
-

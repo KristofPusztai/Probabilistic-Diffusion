@@ -93,7 +93,7 @@ class Diffusion:
         if keep == 'all':
             x = [x_t]
         if no_noise:
-            title = 'No Noise Samples At Time '
+            title = 'Probability Flow ODE Samples At Time '
         else:
             title = 'Samples At Time '
         for t in range(self.T-1, -1, -1):
@@ -102,10 +102,12 @@ class Diffusion:
             a_bar_t = self.alpha_bar[t].reshape((-1, 1))
             if no_noise:
                 sigma_t = 0
+                s_theta = self.model(x_t, torch.tensor([t])) / 2
             else:
                 sigma_t = torch.sqrt(1-a_t)
+                s_theta = self.model(x_t, torch.tensor([t]))
             mean = (1 / torch.sqrt(a_t)) *\
-                   (x_t - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * self.model(x_t, torch.tensor([t]))))
+                   (x_t - ((1 - a_t) / torch.sqrt(1 - a_bar_t) * s_theta))
             x_t = mean + sigma_t * z
             if keep == 'all':
                 x.append(x_t)
